@@ -1,0 +1,563 @@
+import fs from 'fs';
+import path from 'path';
+import type {
+  OrderStatus,
+  QuoteItem,
+  RepairOrder,
+  ServiceCatalogItem,
+  WorkshopAppointment,
+  WorkshopInfo,
+} from '../types/workshop.ts';
+
+interface WorkshopDatabase {
+  info: WorkshopInfo;
+  orders: RepairOrder[];
+  services: ServiceCatalogItem[];
+  appointments: WorkshopAppointment[];
+}
+
+const DATA_DIR = path.resolve(process.cwd(), 'data');
+const DB_PATH = path.join(DATA_DIR, 'workshop-db.json');
+
+const SEED_DATA: WorkshopDatabase = {
+  info: {
+    name: 'Taller Mecánico El Pueblito',
+    address: 'Av. Hidalgo 248, Col. El Pueblito, Querétaro / CDMX Sur',
+    phone: '(55) 4820-9134',
+    whatsapp: '+52 55 4820 9134',
+    hours: 'Lunes a Viernes de 8:00 a 19:00 hrs · Sábados de 8:30 a 14:30 hrs',
+    warranty: '6 meses o 10,000 km por escrito en mano de obra y refacciones instaladas por el taller.',
+    paymentMethods: ['Efectivo', 'Transferencia SPEI', 'Tarjeta de Débito y Crédito (3 MSI en reparaciones mayores a $3,500)'],
+  },
+  services: [
+    {
+      id: 'srv-afinacion',
+      name: 'Afinación Mayor Completa',
+      category: 'Motor y Mantenimiento',
+      priceFrom: 1850,
+      priceTo: 2950,
+      duration: '3 a 4 horas',
+      description: 'Mantenimiento preventivo integral para recuperar potencia, reducir consumo de gasolina y prevenir fallas de encendido.',
+      includes: [
+        'Aceite sintético 5W-30 o 5W-40 según fabricante',
+        'Filtros de aceite, aire y gasolina',
+        '4 bujías de iridio o platino',
+        'Limpieza de cuerpo de aceleración e inyectores por laboratorio',
+        'Escaneo computarizado OBD-II sin costo adicional',
+      ],
+      imageUrl: '/src/assets/images/service_engine_tuneup_1795154050176.jpg',
+    },
+    {
+      id: 'srv-frenos',
+      name: 'Servicio de Frenos y Rectificado',
+      category: 'Frenos y Seguridad',
+      priceFrom: 1450,
+      priceTo: 2800,
+      duration: '2.5 horas',
+      description: 'Inspección y reemplazo de balatas cerámicas de bajo polvo con rectificado de discos para frenado firme y sin rechinidos.',
+      includes: [
+        'Juego de balatas cerámicas delanteras o traseras',
+        'Rectificado de discos en torno de precisión',
+        'Limpieza y lubricación de pernos de cálipers',
+        'Revisión de nivel y humedad de líquido de frenos DOT4',
+      ],
+      imageUrl: '/src/assets/images/service_brakes_suspension_1795154049951.jpg',
+    },
+    {
+      id: 'srv-escaner',
+      name: 'Diagnóstico Electrónico OBD-II',
+      category: 'Diagnóstico Computarizado',
+      priceFrom: 450,
+      priceTo: 650,
+      duration: '45 a 60 min',
+      description: 'Lectura profunda de módulos de motor, transmisión, ABS y bolsas de aire con osciloscopio e informe impreso.',
+      includes: [
+        'Lectura y análisis de códigos de falla (DTC)',
+        'Pruebas de sensores en tiempo real (MAF, O2, CKP)',
+        'Prueba de carga de batería y alternador',
+        'Bonificable al 100% si realizas la reparación con nosotros',
+      ],
+    },
+    {
+      id: 'srv-suspension',
+      name: 'Revisión y Cambio de Suspensión',
+      category: 'Suspensión y Dirección',
+      priceFrom: 1600,
+      priceTo: 4800,
+      duration: '3 a 5 horas',
+      description: 'Elimina golpeteos en baches, vibración en volante y desgaste irregular de llantas.',
+      includes: [
+        'Inspección de amortiguadores, horquillas, rótulas y bieletas',
+        'Reemplazo de piezas dañadas con torque especificado',
+        'Alineación y balanceo de cortesía en cambio de par de amortiguadores',
+      ],
+    },
+    {
+      id: 'srv-aceite',
+      name: 'Cambio de Aceite Express',
+      category: 'Motor y Mantenimiento',
+      priceFrom: 890,
+      priceTo: 1490,
+      duration: '45 min',
+      description: 'Cambio rápido de lubricante y filtro con revisión visual de 21 puntos de seguridad.',
+      includes: [
+        'Hasta 5 litros de aceite sintético o semisintético',
+        'Filtro de aceite OEM',
+        'Relleno de anticongelante y limpiaparabrisas',
+        'Inspección de presión de llantas y fugas',
+      ],
+    },
+    {
+      id: 'srv-ac',
+      name: 'Servicio de Aire Acondicionado',
+      category: 'Climatización y Eléctrico',
+      priceFrom: 950,
+      priceTo: 1750,
+      duration: '1.5 horas',
+      description: 'Vacío del sistema, detección de fugas con tinta UV y recarga exacta de gas refrigerante R134a.',
+      includes: [
+        'Prueba de presión con nitrógeno',
+        'Vacío profundo y recarga de gas R134a',
+        'Cambio de filtro de cabina con carbón activado',
+      ],
+    },
+  ],
+  orders: [
+    {
+      id: 'ORD-2026-041',
+      folio: 'EP-041',
+      plate: 'ABC-123-A',
+      vehicle: 'Volkswagen Jetta 2.0 TSI',
+      year: 2020,
+      mileage: 68420,
+      clientName: 'Carlos Mendoza',
+      clientPhone: '5519283746',
+      status: 'Esperando Aprobación',
+      mechanic: 'Maestro Hernán Morales',
+      bay: 'Bahía 2 (Elevador)',
+      entryDate: '2026-11-19 08:45',
+      estimatedDelivery: 'Hoy 17:30 hrs',
+      clientSymptom: 'Prendió testigo Check Engine y siente pérdida ligera de potencia al subir pendientes.',
+      diagnosticNotes:
+        'Escáner arroja código P0302 (falla de encendido en cilindro 2). Bobina de encendido #2 con resistencia fuera de rango y bujías desgastadas. Cuerpo de aceleración con acumulación de carbón.',
+      paymentStatus: 'Pendiente',
+      items: [
+        { id: 'itm-1', description: 'Diagnóstico computarizado OBD-II y pruebas de osciloscopio', category: 'Mano de Obra', price: 0, approved: true },
+        { id: 'itm-2', description: 'Bobina de encendido original Bosch (Cilindro 2)', category: 'Refacción', price: 1180, approved: false },
+        { id: 'itm-3', description: 'Juego de 4 bujías NGK Iridium + calibración', category: 'Refacción', price: 960, approved: false },
+        { id: 'itm-4', description: 'Lavado de cuerpo de aceleración y mano de obra', category: 'Mano de Obra', price: 750, approved: false },
+      ],
+      timeline: [
+        { id: 'tl-1', timestamp: '08:45', stage: 'Recibido', note: 'Recepción de unidad e inventario físico sin golpes nuevos.', author: 'Recepción' },
+        { id: 'tl-2', timestamp: '09:30', stage: 'En Diagnóstico', note: 'Conexión de escáner OBD-II y prueba de compresión y bobinas.', author: 'Maestro Hernán Morales' },
+        { id: 'tl-3', timestamp: '11:10', stage: 'Esperando Aprobación', note: 'Diagnóstico completado. Presupuesto enviado para autorización del cliente.', author: 'Maestro Hernán Morales' },
+      ],
+    },
+    {
+      id: 'ORD-2026-042',
+      folio: 'EP-042',
+      plate: 'XYZ-894-B',
+      vehicle: 'Nissan Versa Advance',
+      year: 2022,
+      mileage: 41200,
+      clientName: 'Mariana López',
+      clientPhone: '5538471029',
+      status: 'En Reparación',
+      mechanic: 'Ing. Ricardo Salinas',
+      bay: 'Bahía 1',
+      entryDate: '2026-11-19 09:15',
+      estimatedDelivery: 'Hoy 16:00 hrs',
+      clientSymptom: 'Rechinido fuerte al frenar en semáforos y vibración leve en el pedal.',
+      diagnosticNotes:
+        'Balatas delanteras al 10% de vida útil. Discos delanteros con ceja pronunciada (espesor permite rectificado dentro de tolerancia OEM). Líquido de frenos con 3% de humedad.',
+      paymentStatus: 'Pendiente',
+      items: [
+        { id: 'itm-5', description: 'Juego de balatas delanteras cerámicas Akebono', category: 'Refacción', price: 1150, approved: true },
+        { id: 'itm-6', description: 'Rectificado de ambos discos delanteros en torno', category: 'Mano de Obra', price: 580, approved: true },
+        { id: 'itm-7', description: 'Purgado completo con líquido DOT4 sintético', category: 'Mano de Obra', price: 420, approved: true },
+      ],
+      timeline: [
+        { id: 'tl-4', timestamp: '09:15', stage: 'Recibido', note: 'Ingreso por servicio de frenos delanteros.', author: 'Recepción' },
+        { id: 'tl-5', timestamp: '10:00', stage: 'En Diagnóstico', note: 'Medición con micrómetro de discos: 21.4 mm (mínimo 20.0 mm).', author: 'Ing. Ricardo Salinas' },
+        { id: 'tl-6', timestamp: '10:45', stage: 'Esperando Aprobación', note: 'Cliente autorizó vía telefónica rectificado y cambio de balatas.', author: 'Recepción' },
+        { id: 'tl-7', timestamp: '11:00', stage: 'En Reparación', note: 'Discos montados en torno y limpieza de cálipers en proceso.', author: 'Ing. Ricardo Salinas' },
+      ],
+    },
+    {
+      id: 'ORD-2026-043',
+      folio: 'EP-043',
+      plate: 'MNO-452-C',
+      vehicle: 'Honda CR-V Turbo',
+      year: 2019,
+      mileage: 82900,
+      clientName: 'Roberto Gutiérrez',
+      clientPhone: '5590128374',
+      status: 'Listo para Entrega',
+      mechanic: 'Maestro Hernán Morales',
+      bay: 'Zona de Entrega',
+      entryDate: '2026-11-18 14:20',
+      estimatedDelivery: 'Listo — Puede recoger hoy hasta 19:00 hrs',
+      clientSymptom: 'Mantenimiento preventivo de 80,000 km y revisión de aire acondicionado.',
+      diagnosticNotes:
+        'Afinación mayor realizada sin anomalías en motor ni turbo. Filtro de cabina saturado (reemplazado). Carga de gas A/C ajustada al 100%, enfriando a 6.2°C en rejilla.',
+      paymentStatus: 'Pendiente',
+      items: [
+        { id: 'itm-8', description: 'Paquete Afinación Mayor Motor Turbo (Aceite 0W-20 + filtros + bujías)', category: 'Refacción', price: 2850, approved: true },
+        { id: 'itm-9', description: 'Recarga de gas R134a y cambio de filtro de cabina', category: 'Mano de Obra', price: 1150, approved: true },
+      ],
+      timeline: [
+        { id: 'tl-8', timestamp: 'Ayer 14:20', stage: 'Recibido', note: 'Unidad recibida para servicio de 80,000 km.', author: 'Recepción' },
+        { id: 'tl-9', timestamp: 'Hoy 09:40', stage: 'En Reparación', note: 'Cambio de lubricante, bujías y servicio de A/C.', author: 'Maestro Hernán Morales' },
+        { id: 'tl-10', timestamp: 'Hoy 12:15', stage: 'Pruebas Finales', note: 'Prueba en ruta de 5 km y verificación sin fugas.', author: 'Maestro Hernán Morales' },
+        { id: 'tl-11', timestamp: 'Hoy 13:05', stage: 'Listo para Entrega', note: 'Unidad lavada de cortesía y lista en zona de entrega.', author: 'Recepción' },
+      ],
+    },
+    {
+      id: 'ORD-2026-044',
+      folio: 'EP-044',
+      plate: 'JKL-771-D',
+      vehicle: 'Mazda 3 Sedán',
+      year: 2021,
+      mileage: 54110,
+      clientName: 'Sofía Ramírez',
+      clientPhone: '5547192830',
+      status: 'En Diagnóstico',
+      mechanic: 'Téc. Luis Ángel Vega',
+      bay: 'Bahía 3 (Suspensión)',
+      entryDate: '2026-11-19 12:30',
+      estimatedDelivery: 'Mañana 13:00 hrs',
+      clientSymptom: 'Golpe seco en la rueda delantera derecha al pasar topes.',
+      diagnosticNotes: 'En inspección física de horquilla, cacahuate estabilizador y base de amortiguador derecho.',
+      paymentStatus: 'Pendiente',
+      items: [
+        { id: 'itm-10', description: 'Inspección multipunto de suspensión delantera', category: 'Mano de Obra', price: 0, approved: true },
+      ],
+      timeline: [
+        { id: 'tl-12', timestamp: '12:30', stage: 'Recibido', note: 'Ingreso por ruido en suspensión delantera.', author: 'Recepción' },
+        { id: 'tl-13', timestamp: '13:15', stage: 'En Diagnóstico', note: 'Subido a rampa para inspección de bujes y amortiguadores.', author: 'Téc. Luis Ángel Vega' },
+      ],
+    },
+  ],
+  appointments: [
+    {
+      id: 'CIT-101',
+      clientName: 'Alejandro Torres',
+      clientPhone: '5561239874',
+      plate: 'PQR-310-E',
+      vehicle: 'Toyota Corolla 2021',
+      serviceName: 'Cambio de Aceite Express',
+      preferredDate: '2026-11-20',
+      preferredTime: '09:00',
+      notes: 'Usa aceite sintético 0W-20.',
+      status: 'Confirmada',
+      createdAt: '2026-11-19 10:15',
+    },
+    {
+      id: 'CIT-102',
+      clientName: 'Fernanda Castillo',
+      clientPhone: '5582910456',
+      plate: 'STU-908-F',
+      vehicle: 'Kia Rio Hatchback 2020',
+      serviceName: 'Afinación Mayor Completa',
+      preferredDate: '2026-11-20',
+      preferredTime: '11:30',
+      notes: 'Tiene 60,000 km, nunca se ha lavado cuerpo de aceleración.',
+      status: 'Pendiente',
+      createdAt: '2026-11-19 11:50',
+    },
+  ],
+};
+
+function ensureDb(): WorkshopDatabase {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  if (!fs.existsSync(DB_PATH)) {
+    fs.writeFileSync(DB_PATH, JSON.stringify(SEED_DATA, null, 2), 'utf-8');
+    return JSON.parse(JSON.stringify(SEED_DATA));
+  }
+  try {
+    const raw = fs.readFileSync(DB_PATH, 'utf-8');
+    return JSON.parse(raw) as WorkshopDatabase;
+  } catch {
+    fs.writeFileSync(DB_PATH, JSON.stringify(SEED_DATA, null, 2), 'utf-8');
+    return JSON.parse(JSON.stringify(SEED_DATA));
+  }
+}
+
+function saveDb(db: WorkshopDatabase): void {
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2), 'utf-8');
+}
+
+function normalizeQuery(str: string): string {
+  return str.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function currentTimestampLabel(): string {
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, '0');
+  const mm = String(now.getMinutes()).padStart(2, '0');
+  return `Hoy ${hh}:${mm}`;
+}
+
+export function getWorkshopInfo(): WorkshopInfo {
+  return ensureDb().info;
+}
+
+export function listServices(): ServiceCatalogItem[] {
+  return ensureDb().services;
+}
+
+export function listOrders(query?: string): RepairOrder[] {
+  const db = ensureDb();
+  if (!query || !query.trim()) {
+    return db.orders;
+  }
+  const qNorm = normalizeQuery(query);
+  const qLower = query.trim().toLowerCase();
+  return db.orders.filter(
+    (o) =>
+      normalizeQuery(o.plate).includes(qNorm) ||
+      normalizeQuery(o.folio).includes(qNorm) ||
+      normalizeQuery(o.clientPhone).includes(qNorm) ||
+      o.clientName.toLowerCase().includes(qLower) ||
+      o.vehicle.toLowerCase().includes(qLower)
+  );
+}
+
+export function lookupOrder(query: string): RepairOrder | null {
+  const db = ensureDb();
+  const qNorm = normalizeQuery(query);
+  if (!qNorm) return null;
+  const exact = db.orders.find(
+    (o) =>
+      normalizeQuery(o.plate) === qNorm ||
+      normalizeQuery(o.folio) === qNorm ||
+      normalizeQuery(o.id) === qNorm ||
+      normalizeQuery(o.clientPhone) === qNorm
+  );
+  if (exact) return exact;
+  return (
+    db.orders.find(
+      (o) =>
+        normalizeQuery(o.plate).includes(qNorm) ||
+        normalizeQuery(o.folio).includes(qNorm) ||
+        o.clientName.toLowerCase().includes(query.trim().toLowerCase())
+    ) ?? null
+  );
+}
+
+export function createOrder(input: {
+  plate: string;
+  vehicle: string;
+  year: number;
+  mileage: number;
+  clientName: string;
+  clientPhone: string;
+  mechanic: string;
+  bay: string;
+  estimatedDelivery: string;
+  clientSymptom: string;
+}): RepairOrder {
+  const db = ensureDb();
+  const nextNum = 41 + db.orders.length;
+  const folio = `EP-${String(nextNum).padStart(3, '0')}`;
+  const id = `ORD-2026-${String(nextNum).padStart(3, '0')}`;
+  const now = new Date();
+  const entryDate = `${now.toISOString().slice(0, 10)} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+  const newOrder: RepairOrder = {
+    id,
+    folio,
+    plate: input.plate.trim().toUpperCase(),
+    vehicle: input.vehicle.trim(),
+    year: Number(input.year) || 2020,
+    mileage: Number(input.mileage) || 0,
+    clientName: input.clientName.trim(),
+    clientPhone: input.clientPhone.trim(),
+    status: 'Recibido',
+    mechanic: input.mechanic.trim() || 'Maestro Hernán Morales',
+    bay: input.bay.trim() || 'Bahía 1',
+    entryDate,
+    estimatedDelivery: input.estimatedDelivery.trim() || 'Por confirmar tras diagnóstico',
+    clientSymptom: input.clientSymptom.trim(),
+    diagnosticNotes: 'Unidad ingresada recientemente. Pendiente de diagnóstico inicial.',
+    items: [
+      {
+        id: `itm-${Date.now()}`,
+        description: 'Recepción e inspección visual de 21 puntos',
+        category: 'Mano de Obra',
+        price: 0,
+        approved: true,
+      },
+    ],
+    timeline: [
+      {
+        id: `tl-${Date.now()}`,
+        timestamp: currentTimestampLabel(),
+        stage: 'Recibido',
+        note: `Ingreso registrado en taller. Motivo: ${input.clientSymptom.trim()}`,
+        author: 'Recepción',
+      },
+    ],
+    paymentStatus: 'Pendiente',
+  };
+
+  db.orders.unshift(newOrder);
+  saveDb(db);
+  return newOrder;
+}
+
+export function updateOrder(
+  id: string,
+  patch: {
+    status?: OrderStatus;
+    diagnosticNotes?: string;
+    mechanic?: string;
+    bay?: string;
+    estimatedDelivery?: string;
+    paymentStatus?: 'Pendiente' | 'Pagado';
+    timelineNote?: string;
+  }
+): RepairOrder | null {
+  const db = ensureDb();
+  const idx = db.orders.findIndex((o) => o.id === id || normalizeQuery(o.folio) === normalizeQuery(id));
+  if (idx === -1) return null;
+
+  const order = db.orders[idx];
+  const prevStatus = order.status;
+
+  if (patch.status) order.status = patch.status;
+  if (patch.diagnosticNotes !== undefined) order.diagnosticNotes = patch.diagnosticNotes;
+  if (patch.mechanic !== undefined) order.mechanic = patch.mechanic;
+  if (patch.bay !== undefined) order.bay = patch.bay;
+  if (patch.estimatedDelivery !== undefined) order.estimatedDelivery = patch.estimatedDelivery;
+  if (patch.paymentStatus !== undefined) order.paymentStatus = patch.paymentStatus;
+
+  if (patch.status && (patch.status !== prevStatus || patch.timelineNote)) {
+    order.timeline.push({
+      id: `tl-${Date.now()}`,
+      timestamp: currentTimestampLabel(),
+      stage: patch.status,
+      note: patch.timelineNote?.trim() || `Estado actualizado a "${patch.status}".`,
+      author: order.mechanic || 'Taller',
+    });
+  } else if (patch.timelineNote?.trim()) {
+    order.timeline.push({
+      id: `tl-${Date.now()}`,
+      timestamp: currentTimestampLabel(),
+      stage: order.status,
+      note: patch.timelineNote.trim(),
+      author: order.mechanic || 'Taller',
+    });
+  }
+
+  db.orders[idx] = order;
+  saveDb(db);
+  return order;
+}
+
+export function addOrderItem(
+  id: string,
+  item: { description: string; category: 'Mano de Obra' | 'Refacción'; price: number; approved?: boolean }
+): RepairOrder | null {
+  const db = ensureDb();
+  const idx = db.orders.findIndex((o) => o.id === id || normalizeQuery(o.folio) === normalizeQuery(id));
+  if (idx === -1) return null;
+
+  const newItem: QuoteItem = {
+    id: `itm-${Date.now()}`,
+    description: item.description.trim(),
+    category: item.category,
+    price: Number(item.price) || 0,
+    approved: item.approved ?? false,
+  };
+  db.orders[idx].items.push(newItem);
+  saveDb(db);
+  return db.orders[idx];
+}
+
+export function approveOrderQuote(idOrPlateOrFolio: string): RepairOrder | null {
+  const db = ensureDb();
+  const qNorm = normalizeQuery(idOrPlateOrFolio);
+  const idx = db.orders.findIndex(
+    (o) =>
+      normalizeQuery(o.id) === qNorm ||
+      normalizeQuery(o.folio) === qNorm ||
+      normalizeQuery(o.plate) === qNorm
+  );
+  if (idx === -1) return null;
+
+  const order = db.orders[idx];
+  order.items = order.items.map((item) => ({ ...item, approved: true }));
+  if (order.status === 'Esperando Aprobación') {
+    order.status = 'En Reparación';
+    order.timeline.push({
+      id: `tl-${Date.now()}`,
+      timestamp: currentTimestampLabel(),
+      stage: 'En Reparación',
+      note: 'Presupuesto aprobado por el cliente. Iniciamos trabajos de reparación.',
+      author: 'Portal Cliente',
+    });
+  } else {
+    order.timeline.push({
+      id: `tl-${Date.now()}`,
+      timestamp: currentTimestampLabel(),
+      stage: order.status,
+      note: 'Partidas del presupuesto autorizadas por el cliente.',
+      author: 'Portal Cliente',
+    });
+  }
+  db.orders[idx] = order;
+  saveDb(db);
+  return order;
+}
+
+export function listAppointments(): WorkshopAppointment[] {
+  return ensureDb().appointments;
+}
+
+export function createAppointment(input: {
+  clientName: string;
+  clientPhone: string;
+  plate: string;
+  vehicle: string;
+  serviceName: string;
+  preferredDate: string;
+  preferredTime: string;
+  notes?: string;
+}): WorkshopAppointment {
+  const db = ensureDb();
+  const nextNum = 101 + db.appointments.length;
+  const newAppt: WorkshopAppointment = {
+    id: `CIT-${nextNum}`,
+    clientName: input.clientName.trim(),
+    clientPhone: input.clientPhone.trim(),
+    plate: input.plate.trim().toUpperCase(),
+    vehicle: input.vehicle.trim(),
+    serviceName: input.serviceName.trim(),
+    preferredDate: input.preferredDate.trim(),
+    preferredTime: input.preferredTime.trim(),
+    notes: (input.notes ?? '').trim(),
+    status: 'Confirmada',
+    createdAt: currentTimestampLabel(),
+  };
+  db.appointments.unshift(newAppt);
+  saveDb(db);
+  return newAppt;
+}
+
+export function updateAppointmentStatus(
+  id: string,
+  status: WorkshopAppointment['status']
+): WorkshopAppointment | null {
+  const db = ensureDb();
+  const idx = db.appointments.findIndex((a) => a.id === id);
+  if (idx === -1) return null;
+  db.appointments[idx].status = status;
+  saveDb(db);
+  return db.appointments[idx];
+}

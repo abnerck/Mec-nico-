@@ -1,0 +1,6 @@
+{
+  "name": "Taller Mecánico El Pueblito",
+  "description": "Sistema integral para taller mecánico con seguimiento vehicular en tiempo real, gestión de órdenes, citas y asistente inteligente con Gemini.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
